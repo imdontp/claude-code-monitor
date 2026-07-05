@@ -1,6 +1,8 @@
 param(
     [string]$SnapshotPath = $env:CLAUDE_USAGE_SNAPSHOT_PATH,
-    [switch]$NoColor
+    [string]$ConfigPath = $env:CLAUDE_STATUSLINE_CONFIG_PATH,
+    [switch]$NoColor,
+    [switch]$Plain
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +10,59 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($SnapshotPath)) {
     $SnapshotPath = Join-Path $HOME ".claude/usage-snapshot.json"
 }
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path (Split-Path -Parent $PSScriptRoot) "config/statusline-config.json"
+}
+
+function Get-DefaultConfig {
+    return [pscustomobject]@{
+        thresholds = [pscustomobject]@{
+            warn = 70
+            critical = 85
+        }
+        display = [pscustomobject]@{
+            use_symbol = $true
+            symbol_code_point = 9679
+            ascii_symbol = "*"
+            shorten_critical = $false
+        }
+        colors = [pscustomobject]@{
+            enabled = $true
+        }
+    }
+}
+
+function Get-Config {
+    param([string]$Path)
+
+    $config = Get-DefaultConfig
+
+    if (-not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path -LiteralPath $Path)) {
+        try {
+            $loaded = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+            foreach ($section in @("thresholds", "display", "colors")) {
+                $loadedSection = $loaded.PSObject.Properties[$section]
+                if ($null -eq $loadedSection -or $null -eq $loadedSection.Value) {
+                    continue
+                }
+
+                foreach ($property in $loadedSection.Value.PSObject.Properties) {
+                    if ($null -ne $config.$section.PSObject.Properties[$property.Name]) {
+                        $config.$section.($property.Name) = $property.Value
+                    }
+                }
+            }
+        }
+        catch {
+            return $config
+        }
+    }
+
+    return $config
+}
+
+$config = Get-Config -Path $ConfigPath
 
 function Get-Field {
     param(
@@ -93,13 +148,25 @@ function Format-ResetDay {
     }
 }
 
-function Get-Severity {
-    param([object[]]$Values)
+function Get-StatusInfo {
+    param(
+        [object]$FiveHour,
+        [object]$SevenDay,
+        [object]$Context,
+        [double]$WarnThreshold,
+        [double]$CriticalThreshold
+    )
 
     $hasKnownValue = $false
-    $max = 0.0
+    $status = "fresh"
+    $reason = "ok"
 
-    foreach ($value in $Values) {
+    foreach ($entry in @(
+        @{ name = "five_hour"; value = $FiveHour },
+        @{ name = "weekly"; value = $SevenDay },
+        @{ name = "context"; value = $Context }
+    )) {
+        $value = $entry.value
         if ($null -eq $value -or $value -eq "") {
             continue
         }
@@ -107,8 +174,16 @@ function Get-Severity {
         try {
             $hasKnownValue = $true
             $numeric = [double]$value
-            if ($numeric -gt $max) {
-                $max = $numeric
+            if ($numeric -ge $CriticalThreshold) {
+                return [pscustomobject]@{
+                    status = "critical"
+                    reason = "$($entry.name)_high"
+                }
+            }
+
+            if ($numeric -ge $WarnThreshold -and $status -ne "warn") {
+                $status = "warn"
+                $reason = "$($entry.name)_high"
             }
         }
         catch {
@@ -117,18 +192,16 @@ function Get-Severity {
     }
 
     if (-not $hasKnownValue) {
-        return "waiting"
+        return [pscustomobject]@{
+            status = "waiting"
+            reason = "waiting"
+        }
     }
 
-    if ($max -ge 85) {
-        return "critical"
+    return [pscustomobject]@{
+        status = $status
+        reason = $reason
     }
-
-    if ($max -ge 70) {
-        return "warn"
-    }
-
-    return "fresh"
 }
 
 function Get-EffortLabel {
@@ -190,8 +263,8 @@ function Get-ColorCode {
 
             try {
                 $numeric = [double]$Value
-                if ($numeric -ge 85) { return "31;1" }
-                if ($numeric -ge 70) { return "33" }
+                if ($numeric -ge [double]$config.thresholds.critical) { return "31;1" }
+                if ($numeric -ge [double]$config.thresholds.warn) { return "33" }
                 return "32"
             }
             catch {
@@ -205,8 +278,8 @@ function Get-ColorCode {
 
             try {
                 $numeric = [double]$Value
-                if ($numeric -ge 85) { return "31;1" }
-                if ($numeric -ge 70) { return "33" }
+                if ($numeric -ge [double]$config.thresholds.critical) { return "31;1" }
+                if ($numeric -ge [double]$config.thresholds.warn) { return "33" }
                 return "36"
             }
             catch {
@@ -225,12 +298,37 @@ function Colorize {
         [string]$Code
     )
 
-    if ($NoColor -or $env:NO_COLOR) {
+    if ($Plain -or $NoColor -or $env:NO_COLOR -or -not [bool]$config.colors.enabled) {
         return $Text
     }
 
     $esc = [char]27
     return "$esc[$($Code)m$Text$esc[0m"
+}
+
+function Get-StatusSymbol {
+    param([object]$Config)
+
+    if ($Plain -or -not [bool]$Config.display.use_symbol) {
+        return [string]$Config.display.ascii_symbol
+    }
+
+    try {
+        return [char][int]$Config.display.symbol_code_point
+    }
+    catch {
+        return [string]$Config.display.ascii_symbol
+    }
+}
+
+function Format-StatusLabel {
+    param([string]$Status)
+
+    if ([bool]$config.display.shorten_critical -and $Status -eq "critical") {
+        return "crit"
+    }
+
+    return $Status
 }
 
 function Write-Snapshot {
@@ -257,6 +355,7 @@ function New-FallbackSnapshot {
 
     return [ordered]@{
         updated_at = [DateTimeOffset]::Now.ToString("o")
+        schema_version = 2
         model = "-"
         effort = "-"
         thinking = "-"
@@ -274,6 +373,12 @@ function New-FallbackSnapshot {
             used_percentage = $null
         }
         status = $Status
+        status_reason = $Status
+        display = [ordered]@{
+            five_hour = "5h --"
+            seven_day = "W --"
+            context = "ctx --"
+        }
     }
 }
 
@@ -282,7 +387,7 @@ $inputJson = [Console]::In.ReadToEnd()
 if ([string]::IsNullOrWhiteSpace($inputJson)) {
     $snapshot = New-FallbackSnapshot -Status "waiting"
     Write-Snapshot -Path $SnapshotPath -Snapshot $snapshot
-    $dot = Colorize "●" (Get-ColorCode "state" "waiting")
+    $dot = Colorize (Get-StatusSymbol $config) (Get-ColorCode "state" "waiting")
     Write-Output "$dot - | eff - | think - | 5h -- | W -- | ctx -- | waiting"
     exit 0
 }
@@ -293,7 +398,7 @@ try {
 catch {
     $snapshot = New-FallbackSnapshot -Status "stale"
     Write-Snapshot -Path $SnapshotPath -Snapshot $snapshot
-    $dot = Colorize "●" (Get-ColorCode "state" "stale")
+    $dot = Colorize (Get-StatusSymbol $config) (Get-ColorCode "state" "stale")
     Write-Output "$dot - | eff - | think - | 5h -- | W -- | ctx -- | stale"
     exit 0
 }
@@ -306,19 +411,23 @@ $fiveHourReset = Get-Field $data "rate_limits.five_hour.resets_at" $null
 $sevenDayUsed = Get-Field $data "rate_limits.seven_day.used_percentage" $null
 $sevenDayReset = Get-Field $data "rate_limits.seven_day.resets_at" $null
 $contextUsed = Get-Field $data "context_window.used_percentage" $null
-$status = Get-Severity @($fiveHourUsed, $sevenDayUsed, $contextUsed)
+$statusInfo = Get-StatusInfo -FiveHour $fiveHourUsed -SevenDay $sevenDayUsed -Context $contextUsed -WarnThreshold ([double]$config.thresholds.warn) -CriticalThreshold ([double]$config.thresholds.critical)
+$status = $statusInfo.status
+$statusReason = $statusInfo.reason
 
-$dot = Colorize "●" (Get-ColorCode "state" $status)
+$dot = Colorize (Get-StatusSymbol $config) (Get-ColorCode "state" $status)
 $effortText = Colorize "eff $effort" (Get-ColorCode "effort" $effort)
 $fiveHourText = Colorize ("5h {0}" -f (Format-Percent $fiveHourUsed)) (Get-ColorCode "percentage" $fiveHourUsed)
 $sevenDayText = Colorize ("W {0}" -f (Format-Percent $sevenDayUsed)) (Get-ColorCode "percentage" $sevenDayUsed)
 $contextText = Colorize ("ctx {0}" -f (Format-Percent $contextUsed)) (Get-ColorCode "context" $contextUsed)
-$statusText = Colorize $status (Get-ColorCode "state" $status)
+$statusLabel = Format-StatusLabel $status
+$statusText = Colorize $statusLabel (Get-ColorCode "state" $status)
 $fiveHourCountdown = Format-Countdown $fiveHourReset
 $sevenDayResetText = Format-ResetDay $sevenDayReset
 
 $snapshot = [ordered]@{
     updated_at = [DateTimeOffset]::Now.ToString("o")
+    schema_version = 2
     model = $model
     effort = $effort
     thinking = $thinking
@@ -336,6 +445,12 @@ $snapshot = [ordered]@{
         used_percentage = $contextUsed
     }
     status = $status
+    status_reason = $statusReason
+    display = [ordered]@{
+        five_hour = "5h $(Format-Percent $fiveHourUsed) $fiveHourCountdown"
+        seven_day = "W $(Format-Percent $sevenDayUsed) $sevenDayResetText"
+        context = "ctx $(Format-Percent $contextUsed)"
+    }
 }
 
 Write-Snapshot -Path $SnapshotPath -Snapshot $snapshot
