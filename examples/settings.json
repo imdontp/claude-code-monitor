@@ -1,0 +1,8 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/usage-statusline.ps1",
+    "padding": 1,
+    "refreshInterval": 30
+  }
+}
