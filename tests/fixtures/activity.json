@@ -1,4 +1,5 @@
 {
+  "session_id": "statusline-test-session",
   "model": {
     "display_name": "Opus"
   },
@@ -7,11 +8,6 @@
   },
   "thinking": {
     "enabled": true
-  },
-  "cost": {
-    "total_cost_usd": 0.01234,
-    "total_duration_ms": 45000,
-    "total_api_duration_ms": 2300
   },
   "rate_limits": {
     "five_hour": {
@@ -24,9 +20,6 @@
     }
   },
   "context_window": {
-    "total_input_tokens": 82000,
-    "total_output_tokens": 1200,
-    "context_window_size": 200000,
     "used_percentage": 41
   }
 }
