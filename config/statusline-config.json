@@ -1,0 +1,20 @@
+{
+  "thresholds": {
+    "warn": 70,
+    "critical": 85
+  },
+  "display": {
+    "mode": "full",
+    "use_symbol": true,
+    "symbol_style": "solid",
+    "ascii_symbol": "*",
+    "usage_ascii_filled": "#",
+    "usage_ascii_empty": "-",
+    "usage_bar_segments": 12,
+    "two_line": true,
+    "shorten_critical": false
+  },
+  "colors": {
+    "enabled": true
+  }
+}

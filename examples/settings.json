@@ -3,6 +3,21 @@
     "type": "command",
     "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/usage-statusline.ps1",
     "padding": 1,
-    "refreshInterval": 30
+    "refreshInterval": 2
+  },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/subagent-statusline.ps1"
+  },
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event SessionStart" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event UserPromptSubmit" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event Stop" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event StopFailure" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event SessionEnd" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event SubagentStart" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event SubagentStop" }] }],
+    "PreToolUse": [{ "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event PreToolUse" }] }],
+    "PostToolUseFailure": [{ "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/TH12367283/Projects/claude-code-plug-in/scripts/statusline-state.ps1 -Event PostToolUseFailure" }] }]
   }
 }
